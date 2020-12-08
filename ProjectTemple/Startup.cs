@@ -10,6 +10,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Project.Common.Helper;
+using Project.Common.HttpWebHelper;
 using Project.Data.Context;
 using Project.Extensions.Middlewares;
 using Project.Iservice;
@@ -36,10 +37,12 @@ namespace ProjectTemple
         {
 
             services.AddControllers();
-
+            services.AddHttpClient();
             services.AddHttpContextAccessor();
             //单独注册Appsettings
             services.AddSingleton(new Appsettings(Configuration));
+            //单独注册HttpWebClient
+            //services.AddSingleton(new HttpWebClient(htt));
             //Service使用automap统一注册
             services.AddAutoMapper(typeof(ProjectTempleProfile));
             //此处采用automap进行统一注入

@@ -1,13 +1,17 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using Project.Common.Helper;
 using Project.Common.HttpContextHelper;
+using Project.Common.HttpWebHelper;
 using Project.Model.CommonModels;
+using Project.Model.CommonModels.API;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -27,6 +31,7 @@ namespace Project.Extensions.Middlewares
         private readonly RequestDelegate _next;
         private readonly ILogger<RequestResponseLogMildd> _logger;
         private Stopwatch _stopwatch;
+        private readonly IHttpClientFactory _httpClientFactory;
 
         /// <summary>
         /// 
@@ -34,12 +39,14 @@ namespace Project.Extensions.Middlewares
         /// <param name="next"></param>
         public RequestResponseLogMildd(
             RequestDelegate next, 
-            ILogger<RequestResponseLogMildd> logger
+            ILogger<RequestResponseLogMildd> logger,
+            IHttpClientFactory httpClientFactory
             )
         {
             _next = next;
             _logger = logger;
             _stopwatch = new Stopwatch();
+            _httpClientFactory = httpClientFactory;
         }
 
 
@@ -53,14 +60,14 @@ namespace Project.Extensions.Middlewares
                 {
                     _stopwatch.Restart();
                     HttpRequest request = context.Request;
-                    RequestResponseLog requestResponseLogModel = new RequestResponseLog();
+                    RequestResponseLogAPIModel requestResponseLogAPIModel = new RequestResponseLogAPIModel();
 
-                    requestResponseLogModel.UserID = "";//用户ID待后续增加用户再增加
-                    requestResponseLogModel.IP = HttpContextHelper.GetClientIP(context);  //获取IP
-                    requestResponseLogModel.Agent = request.Headers["User-Agent"].ObjToString();  //获取Agent浏览器信息
-                    requestResponseLogModel.RequestMethod = request.Method;  //获取请求类型
-                    requestResponseLogModel.API = request.Host.Value.ObjToString() + request.Path.Value.ObjToString();
-                    requestResponseLogModel.BeginTime = DateTime.Now;  //请求开始时间
+                    requestResponseLogAPIModel.UserID = "";//用户ID待后续增加用户再增加
+                    requestResponseLogAPIModel.IP = HttpContextHelper.GetClientIP(context);  //获取IP
+                    requestResponseLogAPIModel.Agent = request.Headers["User-Agent"].ObjToString();  //获取Agent浏览器信息
+                    requestResponseLogAPIModel.RequestMethod = request.Method;  //获取请求类型
+                    requestResponseLogAPIModel.API = request.Host.Value.ObjToString() + request.Path.Value.ObjToString();
+                    requestResponseLogAPIModel.BeginTime = DateTime.Now;  //请求开始时间
 
                     //获取请求body内容
                     if (request.Method.ToLower().Equals("post") || request.Method.ToLower().Equals("put"))
@@ -70,12 +77,12 @@ namespace Project.Extensions.Middlewares
                         Stream stream = request.Body;
                         byte[] buffer = new byte[request.ContentLength.Value];
                         stream.Read(buffer, 0, buffer.Length);
-                        requestResponseLogModel.RequestData = Encoding.UTF8.GetString(buffer);  //获取请求信息data
+                        requestResponseLogAPIModel.RequestData = Encoding.UTF8.GetString(buffer);  //获取请求信息data
                     }
                     else if (request.Method.ToLower().Equals("get") || request.Method.ToLower().Equals("delete"))
                     {
                         //获取请求信息data
-                        requestResponseLogModel.RequestData = HttpUtility.UrlDecode(request.QueryString.ObjToString(), Encoding.UTF8);
+                        requestResponseLogAPIModel.RequestData = HttpUtility.UrlDecode(request.QueryString.ObjToString(), Encoding.UTF8);
                     }
 
                     // 获取Response.Body内容
@@ -87,7 +94,7 @@ namespace Project.Extensions.Middlewares
                         await _next(context);
 
                         var responseBodyData = await GetResponse(context.Response);
-                        requestResponseLogModel.ResponseData = responseBodyData;  //获取返回信息data
+                        requestResponseLogAPIModel.ResponseData = responseBodyData;  //获取返回信息data
                         await responseBody.CopyToAsync(originalBodyStream);
                     }
 
@@ -95,8 +102,8 @@ namespace Project.Extensions.Middlewares
                     context.Response.OnCompleted(() =>
                     {
                         _stopwatch.Stop();
-                        requestResponseLogModel.EndTime = DateTime.Now;  // 响应结束时间
-                        requestResponseLogModel.OPTime = _stopwatch.ElapsedMilliseconds.ObjToString() ;  //请求响应时间毫秒
+                        requestResponseLogAPIModel.EndTime = DateTime.Now;  // 响应结束时间
+                        requestResponseLogAPIModel.OPTime = _stopwatch.ElapsedMilliseconds.ObjToString() ;  //请求响应时间毫秒
 
                         //// 自定义log输出
                         //var requestInfo = JsonConvert.SerializeObject(userAccessModel);
@@ -110,6 +117,10 @@ namespace Project.Extensions.Middlewares
 
                     //将请求响应信息推送至rabbitMQ中，让Receive程序进行记录
                     //await _eventBusRabbitMQ.PublishAsync(Appsettings.app("RabbitMQ", "QueueName", "RequestResponseLogMildd"), requestResponseLogModel);
+                    HttpWebClient httpWebClient = new HttpWebClient(_httpClientFactory);
+                    requestResponseLogAPIModel.MQQueueName = Appsettings.app("RabbitMQ", "QueueName", "RequestResponseLogMildd");
+                    await httpWebClient.PostAsync(Appsettings.app("API", "Url", "HostUrl") + Appsettings.app("API", "MQ", "RabbitMQPublishUrl"),
+                        JsonConvert.SerializeObject(requestResponseLogAPIModel));
 
                 }
                 else

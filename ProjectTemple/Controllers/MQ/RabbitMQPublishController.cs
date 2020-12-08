@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Project.Model;
 using Project.Model.CommonModels;
+using Project.Model.CommonModels.API;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,18 +26,22 @@ namespace ProjectTemple.API.Controllers.MQ
         /// <summary>
         /// 
         /// </summary>
-        /// <param name="user"></param>
+        /// <param name="requestResponseLogAPIModel"></param>
         /// <returns></returns>
         [HttpPost]
-        public async Task<MessageModel<string>> RequestResponseLog(string RabbitMQQueue,RequestResponseLog requestResponseLog)
+        public async Task<MessageModel<string>> RequestResponseLog(RequestResponseLogAPIModel requestResponseLogAPIModel)
         {
             var data = new MessageModel<string>();
-            await _capPublisher.PublishAsync(RabbitMQQueue, requestResponseLog);
+            await _capPublisher.PublishAsync(requestResponseLogAPIModel.MQQueueName, requestResponseLogAPIModel);
             
             data.response = "";
             data.msg = "推送成功";
             return data;
 
         }
+
+
+
+
     }
 }
